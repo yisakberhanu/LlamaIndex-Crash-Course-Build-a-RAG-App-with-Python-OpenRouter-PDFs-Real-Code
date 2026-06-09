@@ -1,40 +1,150 @@
-I built a complete LlamaIndex RAG crash course in Kaggle using Python, OpenRouter, HuggingFace embeddings, and Gradio.
+# LlamaIndex Crash Course: Beginner to Advanced RAG App
 
-The goal was to build a real document Q&A app step by step — not just explain RAG theory.
+A practical end-to-end LlamaIndex project that demonstrates how to build a Retrieval-Augmented Generation (RAG) application using Python, OpenRouter, HuggingFace embeddings, BM25, reranking, query routing, sub-question decomposition, and Gradio.
 
-The project:
+This project is designed as a hands-on notebook for learning and demonstrating real AI engineering workflows: document loading, chunking, embedding, indexing, retrieval, answer generation, source inspection, evaluation, and deployment through a simple web app.
 
-AI Study Assistant Upload TXT/PDF → Build Index → Ask Questions → Get Answer → Inspect Sources
+## Links
 
-Full pipeline:
+- YouTube tutorial: https://youtu.be/NLIEVgoeF-s
+- Kaggle notebook: https://www.kaggle.com/code/yisberh/llamaindex-crash-course-beginner-advanced
 
-Documents → Chunks → Embeddings → Vector Index → Retriever → LLM → Answer
+## Project Overview
 
-Here is the full breakdown with code.
+The main goal of this project is to show how a document question-answering system works from the inside.
 
+Instead of only calling an LLM directly, the system first searches relevant documents, retrieves the most useful context, and then asks the LLM to generate an answer based on that context.
 
-Install packages
+High-level flow:
 
-We use LlamaIndex, OpenRouter, HuggingFace embeddings, PDF support, and Gradio.
+```text
+Documents
+↓
+Chunks / Nodes
+↓
+Embeddings
+↓
+Vector Index
+↓
+Retriever
+↓
+LLM
+↓
+Answer + Sources
+```
 
+The final result is a small AI Study Assistant that can upload TXT/PDF documents, build an index, ask questions, return answers, and show the source chunks used by the model.
+
+## What This Project Demonstrates
+
+This project covers the full RAG pipeline:
+
+- Loading TXT and PDF documents
+- Splitting documents into chunks
+- Creating embeddings with HuggingFace models
+- Building a vector index with LlamaIndex
+- Asking questions using a query engine
+- Inspecting retrieved chunks and source nodes
+- Controlling chunk size and chunk overlap
+- Using custom prompts to reduce unsupported answers
+- Saving and reloading indexes
+- Building a chat engine for follow-up questions
+- Running simple answer evaluation
+- Creating tools and agents
+- Using hybrid search with BM25 + vector retrieval
+- Comparing vector, keyword, and hybrid retrieval
+- Applying reranking to improve retrieved context
+- Rewriting vague user questions
+- Routing questions to the right query engine
+- Using sub-question decomposition for complex questions
+- Building a Gradio web app
+
+## Tech Stack
+
+| Tool | Purpose |
+|---|---|
+| Python | Main programming language |
+| LlamaIndex | RAG framework |
+| OpenRouter | LLM API access |
+| HuggingFace Embeddings | Local/free embedding model |
+| BM25 | Keyword-based retrieval |
+| SentenceTransformers | Reranking model |
+| Gradio | Web app interface |
+| Kaggle Notebook | Development environment |
+| TXT/PDF files | Input documents |
+
+## Dataset Used
+
+The notebook uses a simple fake school report dataset to make the RAG pipeline easy to understand.
+
+The dataset includes:
+
+```text
+grade_5_report.txt
+grade_6_report.txt
+grade_7_report.txt
+grade_8_report.txt
+```
+
+Each grade report includes:
+
+- Student name
+- Gender
+- English score
+- Mathematics score
+- Science score
+- Social Studies score
+- Attendance
+- Final average
+- Student status
+- Grade-level summary
+
+Example questions:
+
+```text
+Who is the top student in Grade 8?
+Which students need support in Mathematics?
+Which grade has the highest class average?
+How many female students are in Grade 8?
+What is the school lunch menu?
+```
+
+The last question is intentionally not included in the documents, so the notebook can test whether the system avoids unsupported answers.
+
+---
+
+## 1. Installation
+
+The notebook installs the required packages:
+
+```python
 !pip install -q llama-index llama-index-llms-openai \
 llama-index-embeddings-huggingface sentence-transformers pypdf gradio
+```
 
 For advanced retrieval:
 
+```python
 !pip install -q llama-index-retrievers-bm25 rank-bm25 sentence-transformers
+```
 
+---
 
-Set OpenRouter API key
+## 2. OpenRouter API Setup
 
-In Kaggle, I use Secrets.
+The project uses OpenRouter as the LLM provider.
+
+In Kaggle, the API key is loaded from Kaggle Secrets.
 
 Secret name:
 
+```text
 OPENROUTER_API_KEY
+```
 
-Code:
+Example setup:
 
+```python
 import os
 
 try:
@@ -44,20 +154,18 @@ try:
     print("OpenRouter API key loaded.")
 except Exception:
     print("Could not load Kaggle Secret.")
+```
 
+---
 
-Configure LlamaIndex
+## 3. LlamaIndex Configuration
 
-I use:
+This project uses:
 
-OpenRouter for the LLM
+- OpenRouter for LLM answer generation
+- HuggingFace embeddings for vector search
 
-HuggingFace for embeddings
-
-Why?
-
-OpenRouter handles answer generation. HuggingFace embeddings avoid embedding quota issues.
-
+```python
 from llama_index.core import Settings
 from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -72,72 +180,15 @@ Settings.llm = OpenAI(
     api_base="https://openrouter.ai/api/v1",
     temperature=0.1,
 )
+```
 
+---
 
-Create fake school documents
+## 4. Loading Documents
 
-To make the tutorial easy to understand, I created fake school reports for Grade 5, 6, 7, and 8.
+Documents are loaded using `SimpleDirectoryReader`.
 
-Each document includes:
-
-Student name
-
-Gender
-
-Subject scores
-
-Attendance
-
-Final average
-
-Status
-
-Grade summary
-
-Example:
-
-from pathlib import Path
-
-data_dir = Path("data")
-data_dir.mkdir(exist_ok=True)
-
-(data_dir / "grade_8_report.txt").write_text("""
-School: Bright Future Academy
-Academic Year: 2026
-Grade: Grade 8
-Class Teacher: Mr. Birhanu Desta
-
-Student Records:
-1. Amen Tesfaye | Gender: Male | English: 86 | Mathematics: 89 | Science: 88 | Social Studies: 85 | Attendance: 96% | Final Average: 87.00 | Status: Passed
-2. Betelhem Dawit | Gender: Female | English: 92 | Mathematics: 94 | Science: 96 | Social Studies: 91 | Attendance: 99% | Final Average: 93.25 | Status: Passed
-3. Caleb Yared | Gender: Male | English: 79 | Mathematics: 82 | Science: 84 | Social Studies: 80 | Attendance: 93% | Final Average: 81.25 | Status: Passed
-4. Danait Alemayehu | Gender: Female | English: 88 | Mathematics: 90 | Science: 91 | Social Studies: 89 | Attendance: 97% | Final Average: 89.50 | Status: Passed
-5. Ermias Kebede | Gender: Male | English: 69 | Mathematics: 64 | Science: 70 | Social Studies: 72 | Attendance: 84% | Final Average: 68.75 | Status: Needs Support
-6. Lidiya Samuel | Gender: Female | English: 84 | Mathematics: 87 | Science: 85 | Social Studies: 86 | Attendance: 95% | Final Average: 85.50 | Status: Passed
-
-Grade 8 Summary:
-Betelhem Dawit is the top student in Grade 8 with a final average of 93.25.
-Ermias Kebede needs additional support, especially in Mathematics.
-The class average is around 84.2.
-The strongest subject for Grade 8 is Science.
-Grade 8 has the highest class average among Grade 5, Grade 6, Grade 7, and Grade 8.
-""", encoding="utf-8")
-
-Example questions:
-
-Who is the top student in Grade 8?
-Which students need support in Mathematics?
-Which grade has the highest class average?
-How many female students are in Grade 8?
-What is the school lunch menu?
-
-The last question is useful because the answer is not in the documents.
-
-
-Load documents
-
-LlamaIndex loads files using SimpleDirectoryReader.
-
+```python
 from llama_index.core import SimpleDirectoryReader
 
 documents = SimpleDirectoryReader("data").load_data()
@@ -146,30 +197,35 @@ print(f"Number of loaded documents: {len(documents)}")
 
 for doc in documents:
     print(doc.metadata.get("file_name"))
+```
 
 Expected output:
 
+```text
 Number of loaded documents: 4
 grade_5_report.txt
 grade_6_report.txt
 grade_7_report.txt
 grade_8_report.txt
+```
 
-This turns raw files into LlamaIndex Document objects.
+---
 
+## 5. Building the Vector Index
 
-Build vector index
+The vector index converts documents into searchable embeddings.
 
-Now we create a searchable vector index.
-
+```python
 from llama_index.core import VectorStoreIndex
 
 index = VectorStoreIndex.from_documents(documents)
 
 print("Vector index created.")
+```
 
-What happens inside:
+Internal flow:
 
+```text
 documents
 ↓
 chunks
@@ -177,29 +233,35 @@ chunks
 embeddings
 ↓
 vector index
+```
 
+---
 
-Ask the first question
+## 6. Query Engine
 
+The query engine retrieves relevant chunks and asks the LLM to generate an answer.
+
+```python
 query_engine = index.as_query_engine(similarity_top_k=3)
 
 response = query_engine.query("Who is the top student in Grade 8?")
 
 print(response)
+```
 
 Expected output:
 
+```text
 Betelhem Dawit is the top student in Grade 8 with a final average of 93.25.
+```
 
-This is the first complete RAG loop:
+---
 
-question → retrieve context → LLM answer
+## 7. Retrieval Inspection
 
+The notebook includes retrieval-only inspection to verify what the system finds before the LLM generates the final answer.
 
-Inspect retrieval only
-
-Before trusting the answer, I inspect what the retriever finds.
-
+```python
 retriever = index.as_retriever(similarity_top_k=3)
 
 results = retriever.retrieve("Which students need support in Grade 7?")
@@ -210,25 +272,30 @@ for i, node in enumerate(results, start=1):
     print("File:", node.metadata.get("file_name"))
     print(node.text[:500])
     print("-" * 80)
+```
 
-Expected file:
+Expected retrieved file:
 
+```text
 grade_7_report.txt
+```
 
-Expected content includes:
+Expected retrieved content includes:
 
+```text
 Yosef Fikru
 Tinsae Solomon
 Needs Support
 Mathematics
+```
 
-This helps check if retrieval is working before the LLM generates the final answer.
+---
 
+## 8. Source Nodes
 
-Inspect source nodes
+Source nodes show which chunks were used to answer a question.
 
-Source nodes show the exact chunks used to answer.
-
+```python
 response = query_engine.query("Why does Grade 8 have strong performance?")
 
 print("ANSWER:")
@@ -241,18 +308,19 @@ for i, source in enumerate(response.source_nodes, start=1):
     print("File:", source.node.metadata.get("file_name"))
     print(source.node.text[:500])
     print("-" * 80)
+```
 
-Expected source:
+This makes the RAG system easier to inspect and debug.
 
-grade_8_report.txt
+---
 
-This makes the answer easier to verify.
+## 9. Chunking and Chunk Overlap
 
+Chunking splits long documents into smaller nodes.
 
-Chunking and chunk overlap
+Chunk overlap helps preserve context when information is split between two chunks.
 
-Chunking means splitting long documents into smaller parts.
-
+```python
 from llama_index.core.node_parser import SentenceSplitter
 
 splitter = SentenceSplitter(
@@ -263,13 +331,11 @@ splitter = SentenceSplitter(
 nodes = splitter.get_nodes_from_documents(documents)
 
 print(f"Number of chunks/nodes created: {len(nodes)}")
+```
 
-Expected output:
+To inspect overlap:
 
-Number of chunks/nodes created: 10
-
-To see overlap clearly:
-
+```python
 for i in range(len(nodes) - 1):
     print(f"\n========== Node {i+1} → Node {i+2} ==========")
 
@@ -278,14 +344,15 @@ for i in range(len(nodes) - 1):
 
     print("\nSTART OF NEXT NODE:")
     print(nodes[i + 1].text[:250])
+```
 
-Why overlap matters:
+---
 
-If important information is split between two chunks, overlap helps preserve context.
+## 10. Custom Index From Chunks
 
+After creating custom nodes, the notebook builds an index from those nodes.
 
-Build index from custom chunks
-
+```python
 custom_index = VectorStoreIndex(nodes)
 
 custom_query_engine = custom_index.as_query_engine(
@@ -297,22 +364,25 @@ response = custom_query_engine.query(
 )
 
 print(response)
+```
 
-Expected output should mention students like:
+Expected answer should mention students such as:
 
+```text
 Yonas Mengistu
 Dawit Kebede
 Yosef Fikru
 Tinsae Solomon
 Ermias Kebede
+```
 
-Custom chunking gives better control over retrieval.
+---
 
+## 11. Custom Prompt
 
-Custom prompt
+A custom prompt helps control model behavior and reduce unsupported answers.
 
-A custom prompt helps stop the model from inventing unsupported answers.
-
+```python
 from llama_index.core import PromptTemplate
 
 qa_prompt = PromptTemplate(
@@ -341,27 +411,32 @@ safe_query_engine = index.as_query_engine(
 response = safe_query_engine.query("What is the school lunch menu?")
 
 print(response)
+```
 
 Expected output:
 
+```text
 I don't know based on the provided documents.
+```
 
-This is important because the lunch menu is not in the school documents.
+---
 
+## 12. PDF Question Answering
 
-PDF question answering
+The same RAG pipeline can be applied to PDF files.
 
-Same RAG pipeline, different file type.
-
+```python
 from pathlib import Path
 
 pdf_dir = Path("pdf_data")
 pdf_dir.mkdir(exist_ok=True)
 
 print("Upload PDF files into:", pdf_dir.resolve())
+```
 
 After uploading PDFs:
 
+```python
 pdf_files = list(pdf_dir.glob("*.pdf"))
 
 if not pdf_files:
@@ -381,26 +456,25 @@ else:
     )
 
     print(pdf_response)
+```
 
-Expected output:
+---
 
-Loaded PDF document objects.
-Summary:
-...
+## 13. Save and Reload Index
 
-
-Save and reload index
-
-Creating embeddings every time is wasteful.
+Saving the index avoids rebuilding embeddings every time.
 
 Save index:
 
+```python
 index.storage_context.persist(persist_dir="storage")
 
 print("Index saved.")
+```
 
 Reload index:
 
+```python
 from llama_index.core import StorageContext, load_index_from_storage
 
 storage_context = StorageContext.from_defaults(
@@ -419,16 +493,21 @@ response = loaded_query_engine.query(
 )
 
 print(response)
+```
 
 Expected output:
 
+```text
 Betelhem Dawit is the top student in Grade 8 with a final average of 93.25.
+```
 
+---
 
-Chat engine
+## 14. Chat Engine
 
 The chat engine supports follow-up questions.
 
+```python
 chat_engine = index.as_chat_engine(
     chat_mode="condense_question",
     verbose=True
@@ -441,22 +520,25 @@ print(reply1)
 reply2 = chat_engine.chat("What is the final average?")
 print("\nReply 2:")
 print(reply2)
+```
 
 Expected output:
 
+```text
 Reply 1:
 Betelhem Dawit is the top student in Grade 8.
 
 Reply 2:
 Her final average is 93.25.
+```
 
-The second question depends on the first one.
+---
 
+## 15. Simple Evaluation
 
-Simple evaluation
+The notebook includes a simple evaluation loop using expected keywords.
 
-I added a small evaluation loop.
-
+```python
 test_cases = [
     {
         "question": "Who is the top student in Grade 7?",
@@ -483,9 +565,11 @@ for test in test_cases:
     print("Expected keyword:", test["expected_keyword"])
     print("Passed:", passed)
     print("-" * 80)
+```
 
 Expected output:
 
+```text
 Question: Who is the top student in Grade 7?
 Expected keyword: Sara Abebe
 Passed: True
@@ -493,14 +577,17 @@ Passed: True
 Question: Which grade has the highest class average?
 Expected keyword: Grade 8
 Passed: True
+```
 
-This is a simple way to start testing a RAG system.
+---
 
+## 16. Tools and Agents
 
-Tools and agents
+The notebook includes a simple FunctionAgent example.
 
-A tool is a Python function the agent can use.
+A tool is a Python function that the agent can call when needed.
 
+```python
 from llama_index.core.agent.workflow import FunctionAgent
 
 def multiply(a: float, b: float) -> float:
@@ -518,21 +605,21 @@ agent_response = await agent.run(
 )
 
 print(agent_response)
+```
 
 Expected output:
 
+```text
 7006652
+```
 
-Difference:
+---
 
-Query engine = answers from documents
-Agent = can use tools
+## 17. Hybrid Search
 
+Hybrid search combines semantic vector search with BM25 keyword search.
 
-Hybrid search
-
-Hybrid search combines vector search and BM25 keyword search.
-
+```python
 from llama_index.retrievers.bm25 import BM25Retriever
 from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
@@ -565,16 +652,21 @@ response = hybrid_query_engine.query(
 )
 
 print(response)
+```
 
-Why it matters:
+Hybrid retrieval is useful because:
 
+```text
 Vector search = meaning
 BM25 = exact words
-Hybrid = both
+Hybrid search = both
+```
 
+---
 
-Compare vector, BM25, and hybrid retrieval
+## 18. Compare Vector, BM25, and Hybrid Retrieval
 
+```python
 query = "Which students need support in Mathematics?"
 
 retriever_list = [
@@ -593,14 +685,17 @@ for retriever_name, active_retriever in retriever_list:
         print("Score:", result.score)
         print("File:", result.metadata.get("file_name"))
         print(result.text[:700].replace("\n", " "))
+```
 
-This helps compare which retriever finds better chunks.
+This comparison helps understand when semantic search, keyword search, or hybrid search performs better.
 
+---
 
-Reranking
+## 19. Reranking
 
-Reranking retrieves more chunks first, then keeps the best ones.
+Reranking retrieves multiple candidate chunks and then keeps only the strongest ones.
 
+```python
 from llama_index.core.postprocessor import SentenceTransformerRerank
 
 reranker = SentenceTransformerRerank(
@@ -619,9 +714,11 @@ response = rerank_query_engine.query(
 )
 
 print(response)
+```
 
 Flow:
 
+```text
 Retrieve top 6 chunks
 ↓
 Rerank
@@ -629,14 +726,29 @@ Rerank
 Keep top 2
 ↓
 Generate answer
+```
 
+---
 
-Query rewriting
+## 20. Query Rewriting
 
-Query rewriting makes vague questions clearer.
+Query rewriting improves vague questions before retrieval.
 
+Example:
+
+```text
+Original question:
+Who is struggling?
+
+Better search query:
+Which students have Status: Needs Support, low scores, or low attendance?
+```
+
+Code:
+
+```python
 def rewrite_question_for_school_data(user_question: str) -> str:
-    prompt = f'''
+    prompt = f"""
 You are improving a search query for a school report dataset.
 
 The dataset contains:
@@ -653,7 +765,7 @@ Return only the rewritten query.
 
 User question:
 {user_question}
-'''
+"""
 
     rewritten = Settings.llm.complete(prompt)
     return str(rewritten).strip()
@@ -665,18 +777,17 @@ rewritten_question = rewrite_question_for_school_data(original_question)
 
 print("Original question:", original_question)
 print("Rewritten question:", rewritten_question)
+```
 
-Expected rewritten query:
+---
 
-Which students have Status: Needs Support, low scores, or low attendance?
+## 21. Router Query Engine
 
-This connects natural language to document language.
+The Router Query Engine chooses the best query engine for a question.
 
+In this project, separate query engines are created for Grade 5, Grade 6, Grade 7, and Grade 8.
 
-Router Query Engine
-
-The router chooses the best query engine.
-
+```python
 from llama_index.core.tools import QueryEngineTool
 from llama_index.core.query_engine import RouterQueryEngine
 from llama_index.core.selectors import LLMSingleSelector
@@ -728,16 +839,21 @@ response = router_query_engine.query(
 )
 
 print(response)
+```
 
 Expected output:
 
+```text
 Betelhem Dawit is the top student in Grade 8 with a final average of 93.25.
+```
 
+---
 
-Sub-Question Query Engine
+## 22. Sub-Question Query Engine
 
-This helps answer complex questions across multiple documents.
+The Sub-Question Query Engine helps answer questions that require information from multiple documents.
 
+```python
 from llama_index.core.query_engine import SubQuestionQueryEngine
 
 sub_question_engine = SubQuestionQueryEngine.from_defaults(
@@ -750,9 +866,11 @@ response = sub_question_engine.query(
 )
 
 print(response)
+```
 
 Expected answer should compare:
 
+```text
 Grade 6:
 Top student: Isaac Daniel
 Class average: around 77.2
@@ -764,12 +882,15 @@ Top student: Betelhem Dawit
 Class average: around 84.2
 Strongest subject: Science
 Needs support: Ermias Kebede
+```
 
+---
 
-Advanced retrieval evaluation
+## 23. Advanced Retrieval Evaluation
 
-This checks if retrieval returns the correct file.
+This checks whether retrieval returns the correct source file.
 
+```python
 retrieval_tests = [
     {
         "question": "Who is the top student in Grade 5?",
@@ -804,20 +925,34 @@ for test in retrieval_tests:
     print("Retrieved files:", retrieved_files)
     print("Passed:", passed)
     print("-" * 80)
+```
 
 Expected output:
 
+```text
 Expected file: grade_8_report.txt
 Retrieved files: ['grade_8_report.txt', ...]
 Passed: True
+```
 
+---
 
-Final Gradio web app
+## 24. Final Gradio Web App
 
-The final app uploads documents, builds an index, answers questions, and shows source chunks.
+The final section creates a small web app using Gradio.
 
+The app can:
+
+- Upload TXT/PDF files
+- Build a vector index
+- Ask questions
+- Generate answers
+- Show source chunks
+
+```python
 import shutil
 import gradio as gr
+from pathlib import Path
 
 app_query_engine = None
 
@@ -925,9 +1060,11 @@ with gr.Blocks() as demo:
     )
 
 demo.launch(share=True)
+```
 
 Final app flow:
 
+```text
 Upload documents
 ↓
 Build index
@@ -937,11 +1074,12 @@ Ask question
 Generate answer
 ↓
 Show source chunks
+```
 
+## Final Architecture
 
-Full architecture:
-
-User documents
+```text
+User Documents
 ↓
 SimpleDirectoryReader
 ↓
@@ -958,49 +1096,59 @@ OpenRouter LLM
 Answer + Sources
 ↓
 Gradio Web App
+```
 
-This project covers the full LlamaIndex workflow:
+## Skills Demonstrated
 
-RAG basics
+This project demonstrates practical experience with:
 
-Document loading
+- Retrieval-Augmented Generation
+- LlamaIndex
+- Document ingestion
+- Chunking strategies
+- Embedding models
+- Vector indexing
+- Semantic search
+- Keyword search with BM25
+- Hybrid retrieval
+- Reranking
+- Prompt design
+- Source-grounded answering
+- Query rewriting
+- Router-based query engines
+- Sub-question decomposition
+- Basic RAG evaluation
+- Gradio app development
+- Kaggle-based AI prototyping
 
-Chunking
+## Key Takeaway
 
-Embeddings
+A useful RAG system is not only about sending documents to an LLM.
 
-Vector search
+The important work is controlling the full pipeline:
 
-Source inspection
+```text
+Load
+↓
+Chunk
+↓
+Embed
+↓
+Index
+↓
+Retrieve
+↓
+Rerank
+↓
+Prompt
+↓
+Answer
+↓
+Inspect
+↓
+Evaluate
+↓
+Deploy
+```
 
-Custom prompts
-
-PDF Q&A
-
-Index persistence
-
-Chat engine
-
-Simple evaluation
-
-Tools and agents
-
-Hybrid search
-
-Reranking
-
-Query rewriting
-
-Router Query Engine
-
-Sub-Question Query Engine
-
-Final web app
-
-Main idea:
-
-A good RAG app is not just “send documents to an LLM.”
-
-A good RAG app controls the full pipeline:
-
-Load → Chunk → Embed → Retrieve → Rerank → Prompt → Answer → Inspect → Evaluate → Deploy
+This notebook shows that complete workflow in a clear and practical way.
